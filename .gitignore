@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tar.gz
+.DS_Store
+*.dc.html
+canvas.json
+iroha-design-site.html
+
