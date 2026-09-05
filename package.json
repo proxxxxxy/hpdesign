@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
-    "check": "node --check script.js && node --check scripts/serve.mjs && node --check scripts/build.mjs"
+    "check": "node --check script.js && node --check media-controller.js && node --check scripts/serve.mjs && node --check scripts/build.mjs",
+    "test": "node --test tests/media-controller.test.mjs"
   }
 }
-

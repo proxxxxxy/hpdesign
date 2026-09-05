@@ -1,15 +1,16 @@
+import { VideoManager } from './media-controller.js';
+
 const $ = (selector, parent = document) => parent.querySelector(selector);
 const $$ = (selector, parent = document) => [...parent.querySelectorAll(selector)];
 const config = window.IROHA_CONFIG || {};
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 let paused = reducedMotion.matches;
-let videoAllowed = !navigator.connection?.saveData;
+let mediaManager;
 let framePending = false;
 const root = document.documentElement;
 const header = $('#header');
 const hero = $('.hero');
 const media = $('.hero-media');
-const video = $('.hero-video');
 const toggle = $('.motion-toggle');
 
 if (!paused) root.classList.add('js-motion');
@@ -26,16 +27,7 @@ function updateScroll() {
   header.classList.toggle('scrolled', y > 100);
   const max = document.documentElement.scrollHeight - window.innerHeight;
   $('.reading-progress').style.transform = `scaleX(${max > 0 ? y / max : 0})`;
-  media.style.transform = !paused && y < hero.offsetHeight ? `translateY(${y * 0.23}px)` : '';
-  const interlude = $('.interlude');
-  if (interlude && !paused && innerWidth > 800) {
-    const bounds = interlude.getBoundingClientRect();
-    if (bounds.top < innerHeight && bounds.bottom > 0) {
-      const progress = Math.max(0, Math.min(1, (innerHeight - bounds.top) / innerHeight));
-      $('.interlude-frame').style.clipPath = `inset(0 ${4.7 * (1 - progress)}%)`;
-      $('.interlude-frame > img').style.transform = `scale(1.08) translateY(${(progress - 0.5) * 22}px)`;
-    }
-  }
+  media.style.transform = !paused && innerWidth > 800 && y < hero.offsetHeight ? `translateY(${y * 0.16}px)` : '';
 }
 window.addEventListener('scroll', () => {
   if (!framePending) { framePending = true; requestAnimationFrame(updateScroll); }
@@ -50,10 +42,13 @@ function setPaused(next) {
   toggle.setAttribute('aria-label', paused ? 'アニメーションを再開' : 'アニメーションを停止');
   $('.motion-label').textContent = paused ? 'PLAY' : 'PAUSE';
   $('.pause-symbol').textContent = paused ? '▷' : 'Ⅱ';
-  if (video.src) { if (paused) video.pause(); else video.play().catch(() => {}); }
+  mediaManager?.setPaused(paused);
   updateScroll();
 }
-toggle.addEventListener('click', () => { if (paused) videoAllowed = true; setPaused(!paused); });
+toggle.addEventListener('click', () => {
+  if (paused) mediaManager?.allowPlayback();
+  setPaused(!paused);
+});
 reducedMotion.addEventListener('change', event => setPaused(event.matches));
 setPaused(paused);
 
@@ -82,26 +77,31 @@ document.addEventListener('keydown', event => {
 });
 window.matchMedia('(min-width:801px)').addEventListener('change', event => { if (event.matches && !menu.hidden) setMenu(false); });
 
-if (config.heroVideo) {
-  const source = new URL(config.heroVideo, location.href);
-  if (source.origin === location.origin) {
-    video.src = source.href;
-    video.addEventListener('error', () => { video.hidden = true; });
-    video.addEventListener('playing', () => { video.hidden = false; });
-    if (!paused && videoAllowed) video.play().catch(() => {});
+mediaManager = new VideoManager($$('[data-media]').map(host => ({
+  key: host.dataset.media,
+  host,
+  video: $('video', host),
+  source: config[host.dataset.media],
+  control: $(`[data-video-toggle="${host.dataset.media}"]`)
+})), {
+  paused,
+  saveData: Boolean(navigator.connection?.saveData),
+  onState(item, state) {
+    item.host.dataset.mediaState = state;
+    if (!item.control) return;
+    const active = ['playing', 'loading'].includes(state);
+    if (item.key === 'heroVideo') item.control.hidden = active;
+    item.control.setAttribute('aria-pressed', String(active));
+    item.control.setAttribute('aria-label', `${item.control.dataset.title}を${active ? '停止' : '再生'}`);
+    item.control.textContent = state === 'error' ? '静止画で表示中' : active ? 'Ⅱ 映像を停止' : '▷ 映像を再生';
+    item.control.disabled = state === 'error';
   }
-}
-const heroObserver = new IntersectionObserver(([entry]) => {
-  if (!video.src) return;
-  if (!entry.isIntersecting || paused || document.hidden || !videoAllowed) video.pause();
-  else video.play().catch(() => {});
 });
-heroObserver.observe(hero);
-document.addEventListener('visibilitychange', () => {
-  if (!video.src) return;
-  if (document.hidden) video.pause();
-  else if (!paused && videoAllowed && hero.getBoundingClientRect().bottom > 0) video.play().catch(() => {});
-});
+$$('[data-video-toggle]').forEach(button => button.addEventListener('click', () => {
+  const forcePlay = paused;
+  if (paused) setPaused(false);
+  mediaManager.toggle(button.dataset.videoToggle, forcePlay);
+}));
 
 // Concept content is intentionally separate from actual built-work claims.
 const projects = {
@@ -229,4 +229,3 @@ $$('.work-image-wrap').forEach(frame => {
   });
 });
 window.addEventListener('blur', () => cursor.classList.remove('active'));
-
